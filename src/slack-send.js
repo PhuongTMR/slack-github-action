@@ -1,8 +1,12 @@
 const github = require('@actions/github');
-const { WebClient } = require('@slack/web-api');
+const {
+  WebClient
+} = require('@slack/web-api');
 const flatten = require('flat');
 const axios = require('axios');
-const { promises: fs } = require('fs');
+const {
+  promises: fs
+} = require('fs');
 const path = require('path');
 const markup = require('markup-js');
 
@@ -28,16 +32,31 @@ module.exports = async function slackSend(core) {
     }
 
     let payload = core.getInput('payload');
-
     const payloadFilePath = core.getInput('payload-file-path');
 
     if (payloadFilePath && !payload) {
       try {
         payload = await fs.readFile(path.resolve(payloadFilePath), 'utf-8');
-        // parse github context variables
-        const context = { github: github.context };
-        const payloadString = payload.replace('$', '');
-        payload = markup.up(payloadString, context);
+        let payloadContext = JSON.parse(core.getInput('payload-context').replace(/(\r\n|\n|\r)/gm, ""));
+        if (typeof payloadContext === 'string') {
+          payloadContext = JSON.parse(payloadContext);
+        }
+        const statsuColors = {
+          'success': 'good',
+          'failure': 'danger',
+          'cancelled': 'warning'
+        }
+        const statusuMessages = {
+          'success': payloadContext.success_text || 'Succeed',
+          'failure': payloadContext.failure_text || 'Failed',
+          'cancelled': payloadContext.cancelled_text || 'Cancelled'
+        }
+        payloadContext.color = statsuColors[payloadContext.job_status]
+        payloadContext.message_text = statusuMessages[payloadContext.job_status]
+        console.log(payloadContext)
+        payload = markup.up(payload.replace(/\$/g, ''), {
+          context: payloadContext
+        });
       } catch (error) {
         // passed in payload file path was invalid
         console.error(error);
@@ -68,9 +87,17 @@ module.exports = async function slackSend(core) {
 
       if (message.length > 0 || payload) {
         // post message
-        await web.chat.postMessage({ channel: channelId, text: message, ...(payload || {}) });
+        await web.chat.postMessage({
+          channel: channelId,
+          text: message,
+          ...(payload || {})
+        });
       } else {
-        console.log('Missing slack-message or payload! Did not send a message via chat.postMessage with botToken', { channel: channelId, text: message, ...(payload) });
+        console.log('Missing slack-message or payload! Did not send a message via chat.postMessage with botToken', {
+          channel: channelId,
+          text: message,
+          ...(payload)
+        });
         throw new Error('Missing message content, please input a valid payload or message to send. No Message has been send.');
       }
     }
