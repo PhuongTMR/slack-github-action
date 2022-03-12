@@ -30,7 +30,6 @@ module.exports = async function slackSend(core) {
     }
 
     let payload = core.getInput('payload');
-
     const payloadFilePath = core.getInput('payload-file-path');
 
     /** Option to replace templated context variables in the payload file JSON */
@@ -42,9 +41,26 @@ module.exports = async function slackSend(core) {
       try {
         payload = await fs.readFile(path.resolve(payloadFilePath), 'utf-8');
         if (payloadFilePathParsed) {
-          const context = { github: github.context, env: process.env };
-          const payloadString = payload.replaceAll('${{', '{{');
-          payload = markup.up(payloadString, context);
+          let payloadContext = JSON.parse(core.getInput('payload-context').replace(/(\r\n|\n|\r)/gm, ""));
+          if (typeof payloadContext === 'string') {
+            payloadContext = JSON.parse(payloadContext);
+          }
+          const statsuColors = {
+            success: '#2eb886',
+            failure: '#dc3545',
+            cancelled: '#ffc107'
+          };
+          const statusuMessages = {
+            success: payloadContext.success_text || 'Succeed',
+            failure: payloadContext.failure_text || 'Failed',
+            cancelled: payloadContext.cancelled_text || 'Cancelled',
+          };
+          payloadContext.color = statsuColors[payloadContext.job_status];
+          payloadContext.message_text = statusuMessages[payloadContext.job_status];
+          payloadContext.posted_time = `<!date^${Math.round(+new Date() / 1000)}^posted at {date_long_pretty} {time}|posted at Mon, 14 Mar 2022 02:42 GMT>`;
+          payload = markup.up(payload.replace(/\$/g, ''), {
+            context: payloadContext,
+          });
         }
       } catch (error) {
         // passed in payload file path was invalid
@@ -79,11 +95,20 @@ module.exports = async function slackSend(core) {
         const ts = core.getInput('update-ts');
         await Promise.all(channelIds.split(',').map(async (channelId) => {
           if (ts) {
-          // update message
-            webResponse = await web.chat.update({ ts, channel: channelId.trim(), text: message, ...(payload || {}) });
+            // update message
+            webResponse = await web.chat.update({
+              ts,
+              channel: channelId.trim(),
+              text: message,
+              ...(payload || {}),
+            });
           } else {
-          // post message
-            webResponse = await web.chat.postMessage({ channel: channelId.trim(), text: message, ...(payload || {}) });
+            // post message
+            webResponse = await web.chat.postMessage({
+              channel: channelId.trim(),
+              text: message,
+              ...(payload || {}),
+            });
           }
         }));
       } else {

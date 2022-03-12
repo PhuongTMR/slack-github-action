@@ -22,6 +22,8 @@ inputs:
     required: false
   update-ts: # The timestamp of a previous message posted to update it instead of posting a new message
     description: 'The timestamp of a previous message posted. It will update the existing message instead of posting a new message'
+  payload-context: # path to JSON payload to send to Slack via webhook
+    description: 'Payload context to markup the variables'
     required: false
 outputs:
   time: # id of output
