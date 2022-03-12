@@ -28,16 +28,31 @@ module.exports = async function slackSend(core) {
     }
 
     let payload = core.getInput('payload');
-
     const payloadFilePath = core.getInput('payload-file-path');
 
     if (payloadFilePath && !payload) {
       try {
         payload = await fs.readFile(path.resolve(payloadFilePath), 'utf-8');
-        // parse github context variables
-        const context = { github: github.context };
-        const payloadString = payload.replace('$', '');
-        payload = markup.up(payloadString, context);
+        let payloadContext = JSON.parse(core.getInput('payload-context').replace(/(\r\n|\n|\r)/gm, ""));
+        if (typeof payloadContext === 'string'){
+          payloadContext = JSON.parse(payloadContext);
+        }
+        console.log(typeof(payloadContext), payloadContext.job_status)
+        const statsuColors = {
+          'success': 'good',
+          'failure': 'danger',
+          'cancelled': 'warning'
+        }
+        const statusuMessages = {
+          'success': payloadContext.success_text || 'Succeed',
+          'failure': payloadContext.failure_text || 'Failed',
+          'cancelled': payloadContext.cancelled_text || 'Cancelled'
+        }
+        payloadContext.color = statsuColors[payloadContext.job_status]
+        payloadContext.message_text = statusuMessages[payloadContext.job_status]
+        console.log(payloadContext)
+        const payloadString = payload.replace(/\$/g, '');
+        payload = markup.up(payloadString, {context: payloadContext});
       } catch (error) {
         // passed in payload file path was invalid
         console.error(error);
