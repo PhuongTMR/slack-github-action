@@ -9,6 +9,8 @@ const {
 } = require('fs');
 const path = require('path');
 const markup = require('markup-js');
+const HttpsProxyAgent = require('https-proxy-agent');
+const { parseURL } = require('whatwg-url');
 
 const SLACK_WEBHOOK_TYPES = {
   WORKFLOW_TRIGGER: 'WORKFLOW_TRIGGER',
@@ -27,12 +29,14 @@ module.exports = async function slackSend(core) {
       webhookType = process.env.SLACK_WEBHOOK_TYPE.toUpperCase();
     }
 
-    if (botToken === undefined && webhookUrl === undefined) {
+    if ((botToken === undefined || botToken.length <= 0) && (webhookUrl === undefined || webhookUrl.length <= 0)) {
       throw new Error('Need to provide at least one botToken or webhookUrl');
     }
 
     let payload = core.getInput('payload');
     const payloadFilePath = core.getInput('payload-file-path');
+
+    let webResponse;
 
     if (payloadFilePath && !payload) {
       try {
@@ -85,28 +89,21 @@ module.exports = async function slackSend(core) {
         throw new Error('Channel ID is required to run this action. An empty one has been provided');
       }
 
-      Array.prototype.forEachAsyncParallel = async function (fn) {
-        await Promise.all(this.map(fn));
-      }
-
-      channelIDs.forEachAsyncParallel(channelID => {
-        if (message.length > 0 || payload) {
+      if (message.length > 0 || payload) {
+        const ts = core.getInput('update-ts');
+        await Promise.all(channelIDs.map(async (channelId) => {
+          if (ts) {
+          // update message
+            webResponse = await web.chat.update({ ts, channel: channelId.trim(), text: message, ...(payload || {}) });
+          } else {
           // post message
-          web.chat.postMessage({
-            channel: channelID,
-            text: message,
-            ...(payload || {})
-          });
-        } else {
-          console.log('Missing slack-message or payload! Did not send a message via chat.postMessage with botToken', {
-            channel: channelID,
-            text: message,
-            ...(payload)
-          });
-          throw new Error('Missing message content, please input a valid payload or message to send. No Message has been send.');
-        }
-      });
-
+            webResponse = await web.chat.postMessage({ channel: channelId.trim(), text: message, ...(payload || {}) });
+          }
+        }));
+      } else {
+        console.log('Missing slack-message or payload! Did not send a message via chat.postMessage with botToken', { channel: channelIDs, text: message, ...(payload) });
+        throw new Error('Missing message content, please input a valid payload or message to send. No Message has been send.');
+      }
     }
 
     if (typeof webhookUrl !== 'undefined' && webhookUrl.length > 0) {
@@ -130,8 +127,24 @@ module.exports = async function slackSend(core) {
         payload = flatPayload;
       }
 
+      const axiosOpts = {};
       try {
-        await axios.post(webhookUrl, payload);
+        if (parseURL(webhookUrl).scheme === 'https') {
+          const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy || '';
+          if (httpsProxy && parseURL(httpsProxy).scheme === 'http') {
+            const httpsProxyAgent = new HttpsProxyAgent(httpsProxy);
+            axiosOpts.httpsAgent = httpsProxyAgent;
+
+            // Use configured tunnel above instead of default axios proxy setup from env vars
+            axiosOpts.proxy = false;
+          }
+        }
+      } catch (err) {
+        console.log('failed to configure https proxy agent for http proxy. Using default axios configuration');
+      }
+
+      try {
+        await axios.post(webhookUrl, payload, axiosOpts);
       } catch (err) {
         console.log('axios post failed, double check the payload being sent includes the keys Slack expects');
         console.log(payload);
@@ -144,6 +157,15 @@ module.exports = async function slackSend(core) {
         core.setFailed(err.message);
         return;
       }
+    }
+
+    if (webResponse && webResponse.ok) {
+      core.setOutput('ts', webResponse.ts);
+      // return the thread_ts if it exists, if not return the ts
+      const thread_ts = webResponse.thread_ts ? webResponse.thread_ts : webResponse.ts;
+      core.setOutput('thread_ts', thread_ts);
+      // return id of the channel from the response
+      core.setOutput('channel_id', webResponse.channel);
     }
 
     const time = (new Date()).toTimeString();
