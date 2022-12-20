@@ -22,7 +22,7 @@ you will need to define expected variables in the payload the webhook will recei
 * [Create a Slack workflow webhook][create-webhook].
 * Copy the webhook URL (`https://hooks.slack.com/workflows/....`) and [add it as a secret in your repo settings][repo-secret] named `SLACK_WEBHOOK_URL`.
 * Add a step to your GitHub action to send data to your Webhook.
-* Configure your Slack workflow to use variables from the incoming payload from the GitHub Action. You can select where you want to post the data and how you want to format it in Slack's worflow builder interface.
+* Configure your Slack workflow to use variables from the incoming payload from the GitHub Action. You can select where you want to post the data and how you want to format it in Slack's workflow builder interface.
 
 ### Usage
 
@@ -31,7 +31,7 @@ Add this Action as a [step][job-step] to your project's GitHub Action Workflow f
 ```yaml
 - name: Send GitHub Action trigger data to Slack workflow
   id: slack
-  uses: slackapi/slack-github-action@v1.18.0
+  uses: slackapi/slack-github-action@v1.23.0
   env:
     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
@@ -41,7 +41,7 @@ or
 ```yaml
 - name: Send custom JSON data to Slack workflow
   id: slack
-  uses: slackapi/slack-github-action@v1.18.0
+  uses: slackapi/slack-github-action@v1.23.0
   with:
     # This data can be any valid JSON from a previous step in the GitHub Action
     payload: |
@@ -59,7 +59,7 @@ or
 ```yaml
 - name: Send custom JSON data to Slack workflow
   id: slack
-  uses: slackapi/slack-github-action@v1.18.0
+  uses: slackapi/slack-github-action@v1.23.0
   with:
     payload-file-path: "./payload-slack-content.json"
   env:
@@ -85,11 +85,12 @@ Add this Action as a [step][job-step] to your project's GitHub Action Workflow f
 ```yaml
 - name: Post to a Slack channel
   id: slack
-  uses: slackapi/slack-github-action@v1.18.0
+  uses: slackapi/slack-github-action@v1.23.0
   with:
     # Slack channel id, channel name, or user id to post message.
     # See also: https://api.slack.com/methods/chat.postMessage#channels
-    channel-id: 'CHANNEL_ID'
+    # You can pass in multiple channels to post to by providing a comma-delimited list of channel IDs.
+    channel-id: 'CHANNEL_ID,ANOTHER_CHANNEL_ID'
     # For posting a simple plain text message
     slack-message: "GitHub build result: ${{ job.status }}\n${{ github.event.pull_request.html_url || github.event.head_commit.url }}"
   env:
@@ -101,7 +102,7 @@ Using JSON payload for constructing a message is also available:
 ```yaml
 - name: Post to a Slack channel
   id: slack
-  uses: slackapi/slack-github-action@v1.16.0
+  uses: slackapi/slack-github-action@v1.23.0
   with:
     # Slack channel id, channel name, or user id to post message.
     # See also: https://api.slack.com/methods/chat.postMessage#channels
@@ -124,6 +125,65 @@ Using JSON payload for constructing a message is also available:
     SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
 ```
 
+#### Update the message
+
+If you would like to notify the real-time updates on a build status, you can modify the message your build job posted in the subsequent steps. In order to do this, the steps after the first message posting can have `update-ts: ${{ steps.slack.outputs.ts }}` in their settings. With this, the step updates the already posted channel message instead of posting a new one.
+
+Please note that **the message update step does not accept a channel name.** Set a channel ID for the steps for the actions that update messgages.
+
+```yaml
+- id: slack
+  uses: slackapi/slack-github-action@v1.23.0
+  with:
+    # The following message update step does not accept a channel name.
+    # Setting a channel ID here for consistency is highly recommended.
+    channel-id: "CHANNEL_ID"
+    payload: |
+      {
+        "text": "Deployment started (In Progress)",
+        "attachments": [
+          {
+            "pretext": "Deployment started",
+            "color": "dbab09",
+            "fields": [
+              {
+                "title": "Status",
+                "short": true,
+                "value": "In Progress"
+              }
+            ]
+          }
+        ]
+      }
+  env:
+    SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN}}
+- uses: slackapi/slack-github-action@v1.23.0
+  with:
+    # Unlike the step posting a new message, this step does not accept a channel name.
+    # Please use a channel ID, not a name here.
+    channel-id: "CHANNEL_ID"
+    update-ts: ${{ steps.slack.outputs.ts }}
+    payload: |
+      {
+        "text": "Deployment finished (Completed)",
+        "attachments": [
+          {
+            "pretext": "Deployment finished",
+            "color": "28a745",
+            "fields": [
+              {
+                "title": "Status",
+                "short": true,
+                "value": "Completed"
+              }
+            ]
+          }
+        ]
+      }
+  env:
+    SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN}}
+```
+
 ## Technique 3: Slack Incoming Webhook
 
 This approach allows your GitHub Actions job to post a message to a Slack channel or direct message by utilizing [Incoming Webhooks](https://api.slack.com/messaging/webhooks).
@@ -143,7 +203,7 @@ Incoming Webhooks conform to the same rules and functionality as any of Slack's 
 ```yaml
 - name: Send custom JSON data to Slack workflow
   id: slack
-  uses: slackapi/slack-github-action@v1.18.0
+  uses: slackapi/slack-github-action@v1.23.0
   with:
     # For posting a rich message using Block Kit
     payload: |

@@ -9,14 +9,14 @@ jobs:
   unit_tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: npm ci && npm run build
     - run: npm test
 
   integration_test_botToken:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: npm ci && npm run build
     - name: Post message to Slack via botToken
       id: slackToken
@@ -32,10 +32,23 @@ jobs:
     - name: Check Action output is not empty
       run: test -n "${{ steps.slackToken.outputs.time }}"
 
+    - name: Post Threaded Response
+      id: slackThreadResponse
+      uses: ./
+      with:
+        channel-id: ${{ secrets.SLACK_CHANNEL_ID }} 
+        payload: |
+            {
+              "text": "This message should be posted as a response in thread",
+              "thread_ts": "${{ steps.slackToken.outputs.thread_ts }}"
+            }
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
   integration_test_webhook:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: npm ci && npm run build
     - run: echo "${{ github.event_name }}"
     - name: push trigger
@@ -68,7 +81,7 @@ jobs:
   integration_test_incoming_webhook:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: npm ci && npm run build
     - run: echo "${{ github.event_name }}"
     - name: Post message to Slack via incoming webhook
@@ -88,7 +101,7 @@ jobs:
   integration_test_file_payload:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - run: npm ci && npm run build
     - run: echo "${{ github.event_name }}"
     - name: Post message to Slack with Payload path
