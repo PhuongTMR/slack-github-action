@@ -16,9 +16,18 @@ inputs:
   payload-context: # path to JSON payload to send to Slack via webhook
     description: 'Payload context to markup the variables'
     required: false
+  update-ts: # The timestamp of a previous message posted to update it instead of posting a new message
+    description: 'The timestamp of a previous message posted. It will update the existing message instead of posting a new message'
+    required: false
 outputs:
   time: # id of output
     description: 'The time'
+  thread_ts: # threaded timestamp on the message that was posted when using bot token
+    description: 'The timestamp on the message that was posted into Slack when using bot token'
+  ts: # timestamp of message posted
+    description: 'The timestamp on the message that was posted into Slack when using bot token'
+  channel_id: # Id of the channel. If channel name was used as input we can get ID from output for later use when updating message or posting to thread.
+    description: 'The channel id of the message that was posted into Slack when using bot token'
 runs:
-  using: 'node12'
+  using: 'node16'
   main: 'dist/index.js'

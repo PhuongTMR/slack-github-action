@@ -5,7 +5,8 @@ const github = require('@actions/github');
 const rewiremock = require('rewiremock/node');
 
 const ChatStub = {
-  postMessage: sinon.spy(),
+  postMessage: sinon.fake.resolves({ ok: true, ts: '1503435957.111111', thread_ts: '1503435956.000247' }),
+  update: sinon.fake.resolves({ ok: true, thread_ts: '1503435956.000247' }),
 };
 /* eslint-disable-next-line global-require */
 rewiremock(() => require('@slack/web-api')).with({
@@ -57,9 +58,27 @@ describe('slack-send', () => {
         fakeCore.getInput.withArgs('slack-message').returns('who let the dogs out?');
         fakeCore.getInput.withArgs('channel-id').returns('C123456');
         await slackSend(fakeCore);
+        assert.equal(fakeCore.setOutput.firstCall.firstArg, 'ts', 'Output name set to ts');
+        assert.equal(fakeCore.setOutput.secondCall.firstArg, 'thread_ts', 'Output name set to thread_ts');
+        assert(fakeCore.setOutput.secondCall.lastArg.length > 0, 'Time output a non-zero-length string');
         assert.equal(fakeCore.setOutput.lastCall.firstArg, 'time', 'Output name set to time');
         assert(fakeCore.setOutput.lastCall.lastArg.length > 0, 'Time output a non-zero-length string');
         const chatArgs = ChatStub.postMessage.lastCall.firstArg;
+        assert.equal(chatArgs.channel, 'C123456', 'Correct channel provided to postMessage');
+        assert.equal(chatArgs.text, 'who let the dogs out?', 'Correct message provided to postMessage');
+      });
+
+      it('should send a message using the update API', async () => {
+        fakeCore.getInput.withArgs('slack-message').returns('who let the dogs out?');
+        fakeCore.getInput.withArgs('channel-id').returns('C123456');
+        fakeCore.getInput.withArgs('update-ts').returns('123456');
+        await slackSend(fakeCore);
+        assert.equal(fakeCore.setOutput.firstCall.firstArg, 'ts', 'Output name set to ts');
+        assert.equal(fakeCore.setOutput.secondCall.firstArg, 'thread_ts', 'Output name set to thread_ts');
+        assert(fakeCore.setOutput.secondCall.lastArg.length > 0, 'Time output a non-zero-length string');
+        assert.equal(fakeCore.setOutput.lastCall.firstArg, 'time', 'Output name set to time');
+        assert(fakeCore.setOutput.lastCall.lastArg.length > 0, 'Time output a non-zero-length string');
+        const chatArgs = ChatStub.update.lastCall.firstArg;
         assert.equal(chatArgs.channel, 'C123456', 'Correct channel provided to postMessage');
         assert.equal(chatArgs.text, 'who let the dogs out?', 'Correct message provided to postMessage');
       });
@@ -74,6 +93,9 @@ describe('slack-send', () => {
         await slackSend(fakeCore);
 
         // Assert
+        assert.equal(fakeCore.setOutput.firstCall.firstArg, 'ts', 'Output name set to ts');
+        assert.equal(fakeCore.setOutput.secondCall.firstArg, 'thread_ts', 'Output name set to thread_ts');
+        assert(fakeCore.setOutput.secondCall.lastArg.length > 0, 'Time output a non-zero-length string');
         assert.equal(fakeCore.setOutput.lastCall.firstArg, 'time', 'Output name set to time');
         assert(fakeCore.setOutput.lastCall.lastArg.length > 0, 'Time output a non-zero-length string');
         const chatArgs = ChatStub.postMessage.lastCall.firstArg;
@@ -82,6 +104,18 @@ describe('slack-send', () => {
         assert.equal(chatArgs.bonny, 'clyde', 'Correct message provided to postMessage');
         assert.equal(chatArgs.oliver, 'benji', 'Correct message provided to postMessage');
         assert.equal(chatArgs.actor, 'user123', 'Correct message provided to postMessage');
+      });
+
+      it('should send the same message to multiple channels', async () => {
+        fakeCore.getInput.withArgs('slack-message').returns('who let the dogs out?');
+        fakeCore.getInput.withArgs('channel-id').returns('C123456,C987654');
+        await slackSend(fakeCore);
+        const firstChatArgs = ChatStub.postMessage.firstCall.firstArg;
+        const secondChatArgs = ChatStub.postMessage.lastCall.firstArg;
+        assert.oneOf('C123456', [firstChatArgs.channel, secondChatArgs.channel], 'First comma-separated channel provided to postMessage');
+        assert.oneOf('C987654', [firstChatArgs.channel, secondChatArgs.channel], 'Second comma-separated channel provided to postMessage');
+        assert.equal(firstChatArgs.text, 'who let the dogs out?', 'Correct message provided to postMessage with first comma-separated channel');
+        assert.equal(secondChatArgs.text, 'who let the dogs out?', 'Correct message provided to postMessage with second comma-separated channel');
       });
     });
     describe('sad path', () => {
@@ -152,6 +186,33 @@ describe('slack-send', () => {
       it('should post the payload to the webhook URL', async () => {
         await slackSend(fakeCore);
         assert(AxiosMock.post.calledWith('https://someurl', payload));
+      });
+      describe('proxy config', () => {
+        beforeEach(() => {
+          delete process.env.HTTPS_PROXY;
+        });
+        it('should use https proxy agent when proxy uses HTTP', async () => {
+          process.env.HTTPS_PROXY = 'http://test.proxy:8080/';
+          await slackSend(fakeCore);
+          assert(AxiosMock.post.calledWith('https://someurl', payload, sinon.match.has('httpsAgent').and(sinon.match.has('proxy'))));
+        });
+        it('should use default axios config when no proxy set', async () => {
+          await slackSend(fakeCore);
+          assert(AxiosMock.post.calledWithExactly('https://someurl', payload, {}));
+        });
+        it('should use default axios config when proxy uses HTTPS', async () => {
+          process.env.HTTPS_PROXY = 'https://test.proxy:8080/';
+          await slackSend(fakeCore);
+          assert(AxiosMock.post.calledWithExactly('https://someurl', payload, {}));
+        });
+        it('should use default axios config when proxy URL is invalid', async () => {
+          process.env.HTTPS_PROXY = 'invalid string';
+          const consoleSpy = sinon.spy(console, 'log');
+          await slackSend(fakeCore);
+
+          assert(consoleSpy.calledWith('failed to configure https proxy agent for http proxy. Using default axios configuration'));
+          assert(AxiosMock.post.calledWithExactly('https://someurl', payload, {}));
+        });
       });
     });
     describe('sad path', () => {
