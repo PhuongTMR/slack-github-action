@@ -31,7 +31,6 @@ module.exports = async function slackSend(core) {
     }
 
     let payload = core.getInput('payload');
-
     const payloadFilePath = core.getInput('payload-file-path');
 
     let webResponse;
@@ -39,15 +38,39 @@ module.exports = async function slackSend(core) {
     if (payloadFilePath && !payload) {
       try {
         payload = await fs.readFile(path.resolve(payloadFilePath), 'utf-8');
-        // parse github context variables
-        const context = { github: github.context, env: process.env };
-        const payloadString = payload.replaceAll('${{', '{{');
-        payload = markup.up(payloadString, context);
+
+        // Original: parse github context variables
+        // const context = { github: github.context, env: process.env };
+        // const payloadString = payload.replaceAll('${{', '{{');
+        // payload = markup.up(payloadString, context);
+
+        // Phuong: Customized to parse custom context variables
+        let payloadContext = JSON.parse(core.getInput('payload-context').replace(/(\r\n|\n|\r)/gm, ""));
+        if (typeof payloadContext === 'string') {
+          payloadContext = JSON.parse(payloadContext);
+        }
+        const statsuColors = {
+          'success': '#2eb886',
+          'failure': '#dc3545',
+          'cancelled': '#ffc107'
+        }
+        const statusuMessages = {
+          'success': payloadContext.success_text || 'Succeed',
+          'failure': payloadContext.failure_text || 'Failed',
+          'cancelled': payloadContext.cancelled_text || 'Cancelled'
+        }
+        payloadContext.color = statsuColors[payloadContext.job_status]
+        payloadContext.message_text = statusuMessages[payloadContext.job_status]
+        payloadContext.posted_time = "<!date^" + Math.round(+new Date()/1000) + "^posted at {date_long_pretty} {time}|posted at Mon, 14 Mar 2022 02:42 GMT>";
+        payload = markup.up(payload.replace(/\$/g, ''), {
+          context: payloadContext
+        });
       } catch (error) {
         // passed in payload file path was invalid
         console.error(error);
         throw new Error(`The payload-file-path may be incorrect. Failed to load the file: ${payloadFilePath}`);
       }
+      // End of Phuong's customization
     }
 
     if (payload) {
@@ -63,10 +86,10 @@ module.exports = async function slackSend(core) {
 
     if (typeof botToken !== 'undefined' && botToken.length > 0) {
       const message = core.getInput('slack-message') || '';
+
       const channelIds = core.getInput('channel-id') || '';
       const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy || '';
       const web = createWebClient(botToken, httpsProxy);
-
       if (channelIds.length <= 0) {
         console.log('Channel ID is required to run this action. An empty one has been provided');
         throw new Error('Channel ID is required to run this action. An empty one has been provided');
@@ -74,7 +97,7 @@ module.exports = async function slackSend(core) {
 
       if (message.length > 0 || payload) {
         const ts = core.getInput('update-ts');
-        await Promise.all(channelIds.split(',').map(async (channelId) => {
+        await Promise.all(channelIds.map(async (channelId) => {
           if (ts) {
           // update message
             webResponse = await web.chat.update({ ts, channel: channelId.trim(), text: message, ...(payload || {}) });
