@@ -40,17 +40,22 @@ export default class Config {
   /**
    * @typedef Inputs - Values provided to this job.
    * @property {string?} api - A custom API URL to send method requests to.
+   * @property {string?} channelId - Slack channel ID (legacy mode).
    * @property {boolean} errors - If the job should exit after errors or succeed.
    * @property {string?} method - The Slack API method to call.
    * @property {string?} payload - Request contents from the provided input.
    * @property {string?} payloadDelimiter - Separators of nested attributes.
    * @property {string?} payloadFilePath - Location of a JSON request payload.
    * @property {boolean} payloadTemplated - If templated values are replaced.
+   * @property {string?} payloadContext - Custom context for payload templating.
    * @property {string?} proxy - An optional proxied connection for requests.
    * @property {Retries} retries - The retries method to use for failed requests.
+   * @property {string?} slackMessage - Message to post (legacy mode).
    * @property {string?} token - The authentication value used with the Slack API.
+   * @property {string?} updateTs - Timestamp to update existing message (legacy mode).
    * @property {string?} webhook - A location for posting request payloads.
    * @property {string?} webhookType - Posting method to use with the webhook.
+   * @property {boolean} legacyMode - Whether using legacy v1.x style inputs.
    */
 
   /**
@@ -100,21 +105,37 @@ export default class Config {
     this.core = core;
     this.logger = new Logger(core).logger;
     this.webapi = webapi;
+
+    // Check for legacy mode inputs (v1.x style)
+    const channelId = core.getInput("channel-id");
+    const slackMessage = core.getInput("slack-message");
+    const updateTs = core.getInput("update-ts");
+    const legacyMode = !!(channelId || slackMessage);
+
     this.inputs = {
       api: core.getInput("api"),
+      channelId,
       errors: core.getBooleanInput("errors"),
+      legacyMode,
       method: core.getInput("method"),
       payload: core.getInput("payload"),
       payloadDelimiter: core.getInput("payload-delimiter"),
       payloadFilePath: core.getInput("payload-file-path"),
       payloadTemplated: core.getBooleanInput("payload-templated") || false,
+      payloadContext: core.getInput("payload-context"),
       proxy:
         core.getInput("proxy") ||
         process.env.HTTPS_PROXY ||
         process.env.https_proxy ||
         null,
       retries: core.getInput("retries") || this.Retries.FIVE,
-      token: core.getInput("token") || process.env.SLACK_TOKEN || null,
+      slackMessage,
+      token:
+        core.getInput("token") ||
+        process.env.SLACK_BOT_TOKEN ||
+        process.env.SLACK_TOKEN ||
+        null,
+      updateTs,
       webhook:
         core.getInput("webhook") || process.env.SLACK_WEBHOOK_URL || null,
       webhookType: core.getInput("webhook-type"),
@@ -157,6 +178,25 @@ export default class Config {
           `Invalid input! An unknown "retries" value was used: ${this.inputs.retries}`,
         );
     }
+
+    // Legacy mode validation (v1.x style with channel-id)
+    if (this.inputs.legacyMode) {
+      if (!this.inputs.token && !this.inputs.webhook) {
+        throw new SlackError(
+          core,
+          "Missing input! Either a token (SLACK_BOT_TOKEN) or webhook is required.",
+        );
+      }
+      if (this.inputs.channelId && !this.inputs.token) {
+        throw new SlackError(
+          core,
+          "Missing input! A token is required when using channel-id.",
+        );
+      }
+      return; // Skip v3 validation for legacy mode
+    }
+
+    // V3 validation
     switch (true) {
       case !!core.getInput("token") && !!core.getInput("webhook"):
         throw new SlackError(

@@ -27,6 +27,21 @@ export default async function send(core) {
  * @param {Config} config
  */
 async function post(config) {
+  // Legacy mode (v1.x style with channel-id)
+  if (config.inputs.legacyMode) {
+    if (config.inputs.token && config.inputs.channelId) {
+      return await new Client().postLegacy(config);
+    }
+    if (config.inputs.webhook) {
+      return await new Webhook().post(config);
+    }
+    throw new SlackError(
+      config.core,
+      "Legacy mode requires either token+channel-id or webhook",
+    );
+  }
+
+  // V3 mode
   switch (true) {
     case !!config.inputs.method:
       return await new Client().post(config);

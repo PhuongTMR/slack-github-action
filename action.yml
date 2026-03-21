@@ -5,6 +5,9 @@ inputs:
   api:
     description: "A custom API URL to send Slack API method requests to."
     required: false
+  channel-id:
+    description: "Slack channel ID where message will be posted (legacy mode). Supports comma-separated IDs for multiple channels."
+    required: false
   errors:
     default: "false"
     description: "If the step exits with an error on errors or continues."
@@ -25,14 +28,23 @@ inputs:
     default: "false"
     description: "If templated variables in input payloads should be replaced."
     required: false
+  payload-context:
+    description: "Custom context for payload templating with status colors and messages. JSON object with job_status, success_text, failure_text, cancelled_text, skipped_text fields."
+    required: false
   proxy:
     description: "An optional proxied route for HTTPS connections."
     required: false
   retries:
     default: "5"
     description: "The strategy to use when performing retried requests."
+  slack-message:
+    description: "Message to post into Slack (legacy mode). Used with channel-id."
+    required: false
   token:
     description: "The authentication value used with the Slack API."
+    required: false
+  update-ts:
+    description: "Timestamp of a previous message to update instead of posting new (legacy mode)."
     required: false
   webhook:
     description: "A location for posting request payloads."
