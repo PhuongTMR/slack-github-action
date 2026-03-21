@@ -46,6 +46,7 @@ export default class Config {
    * @property {string?} payloadDelimiter - Separators of nested attributes.
    * @property {string?} payloadFilePath - Location of a JSON request payload.
    * @property {boolean} payloadTemplated - If templated values are replaced.
+   * @property {string?} payloadContext - Custom context for payload templating.
    * @property {string?} proxy - An optional proxied connection for requests.
    * @property {Retries} retries - The retries method to use for failed requests.
    * @property {string?} token - The authentication value used with the Slack API.
@@ -108,6 +109,7 @@ export default class Config {
       payloadDelimiter: core.getInput("payload-delimiter"),
       payloadFilePath: core.getInput("payload-file-path"),
       payloadTemplated: core.getBooleanInput("payload-templated") || false,
+      payloadContext: core.getInput("payload-context"),
       proxy:
         core.getInput("proxy") ||
         process.env.HTTPS_PROXY ||

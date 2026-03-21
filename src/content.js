@@ -38,7 +38,11 @@ export default class Content {
         break;
     }
     if (config.inputs.payloadTemplated) {
-      this.values = this.templatize(this.values);
+      if (config.inputs.payloadContext) {
+        this.values = this.templatizeWithContext(this.values, config);
+      } else {
+        this.values = this.templatize(this.values);
+      }
     }
     if (config.inputs.payloadDelimiter) {
       this.values = flatten(this.values, {
@@ -176,5 +180,93 @@ export default class Content {
       return markup.up(template, context);
     }
     return input;
+  }
+
+  /**
+   * Replace templated variables using custom payload context with status colors and messages.
+   * @param {unknown} input - The initial value of the content.
+   * @param {Config} config - The configuration containing payloadContext.
+   * @returns {unknown} Content with templatized variables replaced using custom context.
+   */
+  templatizeWithContext(input, config) {
+    /** @type {Record<string, string>} */
+    const statusColors = {
+      success: "#2eb886",
+      failure: "#dc3545",
+      cancelled: "#ffc107",
+      skipped: "#6c757d",
+    };
+    /** @type {Record<string, string>} */
+    const defaultMessages = {
+      success: "Succeed",
+      failure: "Failed",
+      cancelled: "Cancelled",
+      skipped: "Skipped",
+    };
+
+    try {
+      if (!config.inputs.payloadContext) {
+        return this.templatize(input);
+      }
+      /** @type {Record<string, unknown>} */
+      let payloadContext = JSON.parse(
+        config.inputs.payloadContext.replace(/(\r\n|\n|\r)/gm, ""),
+      );
+      if (typeof payloadContext === "string") {
+        payloadContext = JSON.parse(payloadContext);
+      }
+
+      const jobStatus = /** @type {string} */ (payloadContext.job_status);
+      /** @type {Record<string, string>} */
+      const statusMessages = {
+        success:
+          /** @type {string} */ (payloadContext.success_text) ||
+          defaultMessages.success,
+        failure:
+          /** @type {string} */ (payloadContext.failure_text) ||
+          defaultMessages.failure,
+        cancelled:
+          /** @type {string} */ (payloadContext.cancelled_text) ||
+          defaultMessages.cancelled,
+        skipped:
+          /** @type {string} */ (payloadContext.skipped_text) ||
+          defaultMessages.skipped,
+      };
+
+      payloadContext.color = statusColors[jobStatus];
+      payloadContext.message_text = statusMessages[jobStatus];
+      payloadContext.posted_time = `<!date^${Math.round(Date.now() / 1000)}^posted at {date_long_pretty} {time}|posted at ${new Date().toUTCString()}>`;
+
+      /**
+       * @param {unknown} value - The value to process
+       * @returns {unknown} The processed value
+       */
+      const processValue = (value) => {
+        if (Array.isArray(value)) {
+          return value.map((v) => processValue(v));
+        }
+        if (value && typeof value === "object") {
+          /** @type {Record<string, unknown>} */
+          const out = {};
+          for (const [k, v] of Object.entries(value)) {
+            out[k] = processValue(v);
+          }
+          return out;
+        }
+        if (typeof value === "string") {
+          const template = value.replace(/\$/g, "");
+          return markup.up(template, { context: payloadContext });
+        }
+        return value;
+      };
+
+      return processValue(input);
+    } catch (/** @type {unknown} */ err) {
+      const error = /** @type {Error} */ (err);
+      config.core.warning(
+        `Failed to parse payload-context, falling back to standard templating: ${error.message}`,
+      );
+      return this.templatize(input);
+    }
   }
 }

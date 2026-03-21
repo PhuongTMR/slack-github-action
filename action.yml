@@ -25,6 +25,9 @@ inputs:
     default: "false"
     description: "If templated variables in input payloads should be replaced."
     required: false
+  payload-context:
+    description: "Custom context for payload templating with status colors and messages. JSON object with job_status, success_text, failure_text, cancelled_text, skipped_text fields."
+    required: false
   proxy:
     description: "An optional proxied route for HTTPS connections."
     required: false
